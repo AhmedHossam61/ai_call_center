@@ -8,7 +8,6 @@ openai-whisper>=20231117
 
 # Text-to-Speech (Local)
 TTS>=0.22.0
-transformers==4.56.2
 
 # Audio Processing
 sounddevice>=0.4.6
@@ -19,5 +18,16 @@ numpy>=1.24.0
 torch>=2.0.0
 torchaudio>=2.0.0
 
+
+# STT Enhancements (for better accuracy)
+noisereduce>=3.0.0  # Noise reduction
+librosa>=0.10.0     # Audio processing utilities
+webrtcvad>=2.0.10   # Voice Activity Detection (optional)
+
 # Utilities
 python-dotenv>=1.0.0
+
+# Optional: For fine-tuning Whisper (advanced users)
+transformers>=4.30.0
+datasets>=2.14.0
+accelerate>=0.20.0

@@ -1,10 +1,9 @@
 """
-AI Call Center with Automatic Dialect Detection
-Main application entry point
+AI Call Center with Enhanced STT
+Drop-in replacement for main.py with improved transcription accuracy
 """
 
 import google.generativeai as genai
-import whisper
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
@@ -17,6 +16,7 @@ import uuid
 from session import CallSession
 from dialect_detector import DialectDetector
 from response_generator import ResponseGenerator
+from enhanced_stt import EnhancedSTT
 import torch
 from torch.serialization import add_safe_globals
 from TTS.tts.configs.xtts_config import XttsConfig
@@ -27,17 +27,17 @@ load_dotenv()
 
 # Configuration
 SAMPLE_RATE = 16000
-RECORDING_DURATION = 5  # Seconds to record per turn
-WHISPER_MODEL_SIZE = "base"  # tiny, base, small, medium, large
+RECORDING_DURATION = 5
+WHISPER_MODEL_SIZE = "medium"  # Use medium for better accuracy (was "base")
 
 
 class CallCenterAgent:
-    """Main AI Call Center Agent with dialect detection"""
+    """Main AI Call Center Agent with Enhanced STT"""
     
     def __init__(self):
         """Initialize all components"""
         print("=" * 60)
-        print("AI Call Center - Initializing...")
+        print("AI Call Center with Enhanced STT - Initializing...")
         print("=" * 60)
         
         # Initialize Gemini
@@ -49,10 +49,13 @@ class CallCenterAgent:
         self.gemini_model = genai.GenerativeModel('gemini-2.5-flash')
         print("✓ Gemini 2.5 Flash initialized")
         
-        # Initialize Whisper (Local STT)
-        print(f"Loading Whisper ({WHISPER_MODEL_SIZE})...")
-        self.whisper_model = whisper.load_model(WHISPER_MODEL_SIZE)
-        print("✓ Whisper STT loaded")
+        # Initialize Enhanced STT (replaces basic Whisper)
+        print(f"Loading Enhanced STT...")
+        self.stt = EnhancedSTT(model_size=WHISPER_MODEL_SIZE, enable_noise_reduction=True)
+        print(f"✓ Enhanced STT loaded ({WHISPER_MODEL_SIZE} model)")
+        print(f"  - Noise reduction: enabled")
+        print(f"  - Audio normalization: enabled")
+        print(f"  - Optimized parameters: enabled")
         
         # Initialize TTS
         print("Loading TTS (XTTS-v2)...")
@@ -66,19 +69,11 @@ class CallCenterAgent:
         print("✓ Dialect detector & response generator ready")
         
         print("\n" + "=" * 60)
-        print("All systems ready!")
+        print("All systems ready with Enhanced STT!")
         print("=" * 60 + "\n")
     
     def record_audio(self, duration=RECORDING_DURATION):
-        """
-        Record audio from microphone
-        
-        Args:
-            duration: Recording duration in seconds
-        
-        Returns:
-            numpy array of audio samples
-        """
+        """Record audio from microphone"""
         print(f"🎤 Listening for {duration} seconds...")
         audio = sd.rec(
             int(duration * SAMPLE_RATE),
@@ -92,38 +87,15 @@ class CallCenterAgent:
     
     def transcribe_audio(self, audio_data):
         """
-        Convert speech to text using Whisper
-        
-        Args:
-            audio_data: Audio samples
-        
-        Returns:
-            Transcribed text
+        Convert speech to text using Enhanced STT
+        (replaces basic Whisper transcription)
         """
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
-            sf.write(f.name, audio_data, SAMPLE_RATE)
-            temp_path = f.name
-        
-        print("🔄 Transcribing...")
-        result = self.whisper_model.transcribe(temp_path, language='ar')
-        
-        # Cleanup
-        os.unlink(temp_path)
-        
-        return result['text'].strip()
+        print("🔄 Transcribing with enhancements...")
+        text = self.stt.transcribe(audio_data)
+        return text
     
     def synthesize_speech(self, text, reference_audio_path=None):
-        """
-        Convert text to speech
-        
-        Args:
-            text: Text to synthesize
-            reference_audio_path: Optional reference for voice cloning
-        
-        Returns:
-            Path to generated audio file
-        """
+        """Convert text to speech"""
         print("🔊 Generating speech...")
         
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
@@ -131,7 +103,6 @@ class CallCenterAgent:
         
         try:
             if reference_audio_path and os.path.exists(reference_audio_path):
-                # Clone customer's voice (optional feature)
                 self.tts.tts_to_file(
                     text=text,
                     speaker_wav=reference_audio_path,
@@ -139,7 +110,6 @@ class CallCenterAgent:
                     file_path=output_path
                 )
             else:
-                # Use default Arabic voice
                 self.tts.tts_to_file(
                     text=text,
                     language="ar",
@@ -150,18 +120,12 @@ class CallCenterAgent:
             
         except Exception as e:
             print(f"❌ TTS error: {e}")
-            # Create silent audio as fallback
             silence = np.zeros(SAMPLE_RATE * 2, dtype=np.float32)
             sf.write(output_path, silence, SAMPLE_RATE)
             return output_path
     
     def play_audio(self, file_path):
-        """
-        Play audio file through speakers
-        
-        Args:
-            file_path: Path to audio file
-        """
+        """Play audio file through speakers"""
         try:
             audio_data, sample_rate = sf.read(file_path)
             print("▶️  Playing response...")
@@ -170,13 +134,11 @@ class CallCenterAgent:
         except Exception as e:
             print(f"❌ Playback error: {e}")
         finally:
-            # Cleanup
             if os.path.exists(file_path):
                 os.unlink(file_path)
     
     def handle_call(self):
         """Main call handling loop"""
-        # Create new session
         session = CallSession(str(uuid.uuid4()))
         
         print("\n" + "=" * 60)
@@ -198,14 +160,14 @@ class CallCenterAgent:
                 # 1. RECORD customer speech
                 audio = self.record_audio()
                 
-                # Save first audio for voice cloning (optional)
+                # Save first audio for voice cloning
                 if turn_count == 1 and reference_audio_path is None:
                     with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
                         sf.write(f.name, audio, SAMPLE_RATE)
                         reference_audio_path = f.name
                     print("✓ Voice sample saved for cloning")
                 
-                # 2. TRANSCRIBE to text
+                # 2. TRANSCRIBE to text (Enhanced STT)
                 customer_text = self.transcribe_audio(audio)
                 
                 if not customer_text or len(customer_text) < 2:
@@ -214,12 +176,12 @@ class CallCenterAgent:
                 
                 print(f"📝 Customer: {customer_text}")
                 
-                # 3. DETECT DIALECT (only if not locked)
+                # 3. DETECT DIALECT
                 if not session.dialect_locked:
                     dialect, confidence = self.dialect_detector.detect(customer_text)
                     session.lock_dialect(dialect, confidence)
                 
-                # Display current dialect status
+                # Display dialect status
                 if session.dialect_locked:
                     print(f"🔒 Dialect: {session.detected_dialect} (locked)")
                 else:
@@ -250,7 +212,7 @@ class CallCenterAgent:
             print("CALL ENDED")
             print("=" * 60)
             
-            # Show call statistics
+            # Show statistics
             stats = session.get_stats()
             print(f"\nCall Statistics:")
             print(f"  Session ID: {stats['session_id']}")
@@ -269,10 +231,7 @@ class CallCenterAgent:
 def main():
     """Main entry point"""
     try:
-        # Initialize agent
         agent = CallCenterAgent()
-        
-        # Handle call
         agent.handle_call()
         
     except Exception as e:
