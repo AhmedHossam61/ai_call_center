@@ -21,6 +21,7 @@ class VectorDB:
     "إلغاء الاشتراك",
     "التحدث مع موظف",
 ]
+    
     def __init__(self):
         # 1. تهيئة الإعدادات والاتصال بـ Qdrant
         self.settings = get_settings()

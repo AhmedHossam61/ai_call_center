@@ -11,7 +11,6 @@ class CallSession:
             "gulf":      0.60,   # overlaps with MSA — accept lower confidence
             "sudanese":  0.60,   # same reason as gulf
             "levantine": 0.65,
-            "moroccan":  0.75,   # very distinct — require higher confidence
             "msa":       0.80,
         }
     

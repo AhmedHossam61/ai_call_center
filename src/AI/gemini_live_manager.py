@@ -39,9 +39,9 @@ settings = get_settings()
 
 # ── Models ─────────────────────────────────────────────────────────────
 # Developer API (API key) model IDs from the Live API docs/models pages.
-# PRIMARY_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
+PRIMARY_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 FALLBACK_MODEL = "gemini-2.5-flash-native-audio-preview-09-2025"
-PRIMARY_MODEL = "gemini-live-2.5-flash-native-audio"
+# PRIMARY_MODEL = "gemini-live-2.5-flash-native-audio"
 # Vertex AI model ID (only used if GOOGLE_GENAI_USE_VERTEXAI is enabled).
 VERTEX_MODEL = "gemini-live-2.5-flash-native-audio"
 
@@ -57,7 +57,6 @@ DIALECT_VOICES = {
     "gulf": "Charon",
     "sudanese": "Aoede",
     "levantine": "Aoede",
-    "moroccan": "Kore",
     "msa": "Kore",
 }
 
