@@ -30,7 +30,8 @@ from RAGcontrollers.VectorDB import VectorDB
 
 # ── Constants ────────────────────────────────────────────────────────────────
 AUDIO_DIR = Path(__file__).parent.parent / "AI" / "audio_files"
-WELCOME_FILE = AUDIO_DIR / "welcome_msa.wav"
+WELCOME_FILE = AUDIO_DIR / "welcome_egyptian.wav"
+HOLD_FILE    = AUDIO_DIR / "hold_music.wav"
 
 
 # ── Singletons ───────────────────────────────────────────────────────────────
@@ -46,42 +47,96 @@ pending_context: dict[str, str] = {}  # per-session RAG context ready for next t
 
 # ── Pre-load welcome WAV ─────────────────────────────────────────────────────
 welcome_audio: tuple[int, np.ndarray] | None = None
+hold_music_audio: tuple[int, np.ndarray] | None = None
 
 
-def load_welcome_audio() -> None:
-    global welcome_audio
-    print("\n" + "=" * 60)
-    print("📁 Loading welcome message...")
-    print("=" * 60)
-
-    if not WELCOME_FILE.exists():
-        print("⚠️  Welcome file not found — skipping greeting")
-        print("=" * 60 + "\n")
-        return
-
+def _load_wav(path: Path, label: str) -> tuple[int, np.ndarray] | None:
+    """Load a mono int16 WAV. Returns (sample_rate, samples) or None."""
+    if not path.exists():
+        print(f"⚠️  {label} not found at {path} — skipping")
+        return None
     try:
-        with wave.open(str(WELCOME_FILE), "rb") as wf:
+        with wave.open(str(path), "rb") as wf:
             sr = wf.getframerate()
             channels = wf.getnchannels()
             frames = wf.readframes(wf.getnframes())
             audio = np.frombuffer(frames, dtype=np.int16)
-
-            # stereo → mono
             if channels == 2:
                 audio = audio.reshape(-1, 2).mean(axis=1).astype(np.int16)
-
-            welcome_audio = (sr, audio)
-            print(f"✅ Welcome loaded: {len(audio)/sr:.1f}s @ {sr} Hz")
+        print(f"✅ {label} loaded: {len(audio)/sr:.1f}s @ {sr} Hz")
+        return (sr, audio)
     except Exception as e:
-        print(f"❌ Welcome load error: {e}")
-
-    print("=" * 60 + "\n")
-
-
-load_welcome_audio()
+        print(f"❌ {label} load error: {e}")
+        return None
 
 
-# ── Startup: play welcome on connect ─────────────────────────────────────────
+print("\n" + "=" * 60)
+print("📁 Loading audio files...")
+print("=" * 60)
+welcome_audio    = _load_wav(WELCOME_FILE, "Welcome")
+hold_music_audio = _load_wav(HOLD_FILE,    "Hold music")
+print("=" * 60 + "\n")
+
+
+# ── Hold-music helper ─────────────────────────────────────────────────────────
+
+async def _stream_with_hold_music(
+    live: GeminiLiveManager,
+    audio: np.ndarray,
+    sample_rate: int,
+):
+    """Run send_and_receive in a background task.
+    Yields hold-music chunks until the first Gemini audio chunk arrives,
+    then transparently switches to streaming Gemini audio.
+    No extra latency is added — Gemini processing starts immediately.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def _feed():
+        try:
+            async for item in live.send_and_receive(audio, sample_rate):
+                await queue.put(item)
+        finally:
+            await queue.put(None)  # sentinel
+
+    feed_task = asyncio.ensure_future(_feed())
+
+    HOLD_CHUNK = OUTPUT_SAMPLE_RATE // 10  # 100 ms
+    hold_pos = 0
+    gemini_started = False
+
+    try:
+        while True:
+            # Phase 1: hold music until first Gemini chunk
+            if not gemini_started:
+                try:
+                    item = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    if hold_music_audio is not None:
+                        h_sr, h_audio = hold_music_audio
+                        chunk = h_audio[hold_pos : hold_pos + HOLD_CHUNK]
+                        if len(chunk) == 0:        # loop
+                            hold_pos = 0
+                            chunk = h_audio[:HOLD_CHUNK]
+                        hold_pos = (hold_pos + HOLD_CHUNK) % max(len(h_audio), 1)
+                        if len(chunk):
+                            yield (h_sr, chunk.reshape(1, -1))
+                    await asyncio.sleep(0.05)  # 50 ms poll
+                    continue
+
+                if item is None:   # Gemini returned nothing
+                    break
+                gemini_started = True
+                yield item        # first real chunk
+
+            # Phase 2: drain remaining Gemini chunks (blocking)
+            else:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield item
+    finally:
+        feed_task.cancel()
 
 async def welcome_startup(webrtc_id: str = "default_web_user"):
     """Async generator yielded by ReplyOnPause.startup_fn on each new WebRTC
@@ -194,10 +249,10 @@ async def process_call(audio_data: tuple[int, np.ndarray], webrtc_id: str = "def
                 print(f"⚠️  Pre-turn RAG inject failed: {pre_err}")
                 pending_context.pop(SESSION_ID, None)
 
-        # 2) Send audio → stream Gemini audio response
-        print(f"🎙️  User spoke ({len(audio)/sr:.1f}s) — sending to Gemini Live...")
+        # 2) Send audio → stream Gemini audio response (hold music fills the gap)
+        print(f"🎵🎵🎵  User spoke ({len(audio)/sr:.1f}s) — sending to Gemini Live...")
         chunks = 0
-        async for out_sr, out_audio in live.send_and_receive(audio, sr):
+        async for out_sr, out_audio in _stream_with_hold_music(live, audio, sr):
             yield (out_sr, out_audio)
             chunks += 1
         print(f"   ✓ Streamed {chunks} audio chunks back to browser")
