@@ -43,7 +43,9 @@ See [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) for route and payload
 ## Running Locally
 
 run the qdrant docker image
-`docker-compose up -d`
+```bash
+docker-compose up -d
+```
 
 Run the FastAPI server (from `src/`):
 
