@@ -80,15 +80,33 @@ def load_welcome_audio() -> None:
 load_welcome_audio()
 
 
-# ── Session helpers ──────────────────────────────────────────────────────────
+# ── Startup: play welcome on connect ─────────────────────────────────────────
+
+async def welcome_startup():
+    """Async generator yielded by ReplyOnPause.startup_fn on each new WebRTC
+    connection.  Sends a 100 ms silence to prime the browser AudioContext, then
+    streams the pre-recorded welcome WAV — all before the user speaks a word.
+    """
+    # Prime browser AudioContext (fixes first-reply silence on Chrome/Safari)
+    silence = np.zeros(OUTPUT_SAMPLE_RATE // 10, dtype=np.int16)
+    yield (OUTPUT_SAMPLE_RATE, silence.reshape(1, -1))
+
+    if welcome_audio is None:
+        return
+
+    print("🎵 Playing welcome message on connection...")
+    w_sr, w_audio = welcome_audio
+    chunk_size = OUTPUT_SAMPLE_RATE // 10  # 100 ms chunks
+    for i in range(0, len(w_audio), chunk_size):
+        chunk = w_audio[i : i + chunk_size]
+        if len(chunk):
+            yield (w_sr, chunk.reshape(1, -1))
+    print("   ✓ Welcome complete\n")
+
 
 def get_or_create_session(session_id: str) -> CallSession:
     if session_id not in sessions:
-        s = CallSession(session_id)
-        # Flags used by this router (kept out of CallSession to avoid breaking other imports)
-        s.welcome_played = False
-        s.audio_initialized = False
-        sessions[session_id] = s
+        sessions[session_id] = CallSession(session_id)
     return sessions[session_id]
 
 
@@ -159,33 +177,12 @@ async def process_call(audio_data: tuple[int, np.ndarray]):
     try:
         sr, audio = audio_data
 
-        # 1) Prime browser AudioContext (fixes first-reply silence)
-        if not getattr(session, "audio_initialized", False):
-            session.audio_initialized = True
-            print("\n🔧 Priming AudioContext...")
-            silence = np.zeros(OUTPUT_SAMPLE_RATE // 10, dtype=np.int16).reshape(1, -1)  # 100ms
-            yield (OUTPUT_SAMPLE_RATE, silence)
-            await asyncio.sleep(0.1)
-            print("   ✓ AudioContext primed\n")
-
-        # 2) Play pre-recorded welcome once
-        if not getattr(session, "welcome_played", False) and welcome_audio:
-            session.welcome_played = True
-            print("🎵 Playing welcome message...")
-            w_sr, w_audio = welcome_audio
-            chunk_size = OUTPUT_SAMPLE_RATE // 10  # 100ms
-            for i in range(0, len(w_audio), chunk_size):
-                chunk = w_audio[i : i + chunk_size]
-                if len(chunk):
-                    yield (w_sr, chunk.reshape(1, -1))
-            print("   ✓ Welcome complete\n")
-
-        # 3) Ensure Live session exists
+        # 1) Ensure Live session exists
         live = await get_or_create_live_session(SESSION_ID, session)
         if live is None:
             return
 
-        # 4) Send audio → stream Gemini audio response
+        # 2) Send audio → stream Gemini audio response
         print(f"🎙️  User spoke ({len(audio)/sr:.1f}s) — sending to Gemini Live...")
         chunks = 0
         async for out_sr, out_audio in live.send_and_receive(audio, sr):
@@ -193,7 +190,7 @@ async def process_call(audio_data: tuple[int, np.ndarray]):
             chunks += 1
         print(f"   ✓ Streamed {chunks} audio chunks back to browser")
 
-        # 5) Transcripts for UI/logging (optional)
+        # 3) Transcripts for UI/logging (optional)
         in_text = live.last_turn.input_text
         out_text = live.last_turn.output_text
 
@@ -221,7 +218,7 @@ async def process_call(audio_data: tuple[int, np.ndarray]):
 # ── FastRTC Stream ───────────────────────────────────────────────────────────
 
 stream = Stream(
-    handler=ReplyOnPause(process_call),
+    handler=ReplyOnPause(process_call, startup_fn=welcome_startup),
     modality="audio",
     mode="send-receive",
     additional_outputs_handler=lambda: {"text": "", "event": ""},
