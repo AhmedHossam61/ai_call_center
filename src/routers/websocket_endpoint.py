@@ -30,7 +30,7 @@ from RAGcontrollers.VectorDB import VectorDB
 
 # ── Constants ────────────────────────────────────────────────────────────────
 AUDIO_DIR = Path(__file__).parent.parent / "AI" / "audio_files"
-WELCOME_FILE = AUDIO_DIR / "welcome_msa.wav"
+WELCOME_FILE = AUDIO_DIR / "welcome_gulf.wav"
 
 
 # ── Singletons ───────────────────────────────────────────────────────────────
