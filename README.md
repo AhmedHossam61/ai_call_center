@@ -42,6 +42,8 @@ See [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) for route and payload
 
 ## Running Locally
 
+run the qdrant docker image 
+
 Run the FastAPI server (from `src/`):
 
 ```bash
@@ -49,7 +51,7 @@ cd src
 python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Use the websocket endpoint for live audio sessions: check `src/routers/websocket_endpoint.py` for details.
+Use the websocket endpoint at localhost:8001 for live audio sessions: check `src/routers/websocket_endpoint.py` for details.
 
 Generate audio assets (example):
 
