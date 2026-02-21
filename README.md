@@ -1,96 +1,104 @@
-# AI Call Center 📞🤖
+# AI Call Center — README
 
-An advanced, AI-powered call center solution featuring real-time Speech-to-Text (STT), Retrieval Augmented Generation (RAG) for localized knowledge, Arabic dialect detection, and high-quality Text-to-Speech (TTS) response generation.
+This repository contains an AI-powered call center demo with components for speech-to-text, dialect detection, retrieval-augmented generation (RAG) using a vector DB, and text-to-speech audio output. The project provides both a FastAPI-based web interface and utilities for generating and managing audio assets.
 
----
+## Key Capabilities
 
-## 🌟 Key Features
+- Real-time and batch audio processing (STT using Whisper-compatible workflows).
+- Arabic dialect detection and adaptation (`src/AI/dialect_detector.py`).
+- RAG integration with Qdrant via `src/RAGcontrollers/` for context-aware responses.
+- Orchestration and live LLM interaction in `src/AI/gemini_live_manager.py`.
+- TTS/audio generation helpers in `src/generate_audio_files.py` and `src/AI/audio_files/`.
+- FastAPI routes and websocket endpoint for live interaction in `src/routers/` (see `websocket_endpoint.py`).
 
-- **🗣️ Real-time Arabic STT**: Uses OpenAI's **Whisper** model for accurate transcription of Arabic speech.
-- **🌍 Dialect Detection**: Automatically detects and adapts to different Arabic dialects (e.g., Egyptian, MSA) using **Google Gemini**.
-- **🔍 RAG Support (Knowledge Base)**: Integrated with **Qdrant** Vector DB to provide context-aware responses based on provided documents.
-- **💬 Smart Response Generation**: Powered by **Gemini 2.5 Flash** for natural, helpful, and dialect-appropriate interactions.
-- **🔊 High-Quality TTS**: Delivers smooth voice responses via **Edge-TTS**.
-- **🚀 Dual Interface**: Supports both a **CLI-based call handler** for direct interaction and a **FastAPI** web server for integration.
+## Quickstart
 
----
+Prerequisites:
 
-## 🏗️ Architecture Overview
+- Python 3.10+
+- FFmpeg (system-wide) for audio transformations
+- A running Qdrant instance if you use the RAG features (can be run via Docker)
 
-The system operates in a pipeline:
-1.  **Input**: Audio is captured via `sounddevice` / microphone.
-2.  **STT**: `whisper` transcribes the audio to text.
-3.  **RAG**: `VectorDB` searches for relevant context in the Qdrant database.
-4.  **Processor**: `CallCenterAgent` orchestrates dialect detection and response generation using Gemini.
-5.  **Output**: `edge-tts` generates speech, which is played back to the user.
+Install Python dependencies (from project root):
 
----
-
-## 🛠️ Technology Stack
-
-- **Core Logic**: Python 3.10+
-- **AI Models**:
-    - **LLM/Embeddings**: Google Gemini API (`gemini-2.5-flash`, `text-embedding-004`)
-    - **STT**: OpenAI Whisper (Local)
-- **Database**: Qdrant (Vector Search)
-- **Web Framework**: FastAPI
-- **Audio Processing**: SoundDevice, SoundFile, Pydub, Edge-TTS
-
----
-
-## ⚙️ Setup & Installation
-
-### 1. Prerequisites
-- Python 3.10 or higher
-- [FFmpeg](https://ffmpeg.org/) (Required for audio processing)
-- [Qdrant](https://qdrant.tech/documentation/quick-start/) (Running instance for RAG)
-
-### 2. Install Dependencies
 ```bash
 pip install -r src/requirements.txt
 ```
 
-### 3. Environment Configuration
-Create a `.env` file in the `src/` directory (refer to `env.example`):
-```env
-GEMINI_API_KEY=your_gemini_api_key
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
-VECTOR_COLLECTION_NAME=knowledge_base
-EMBEDDING_MODEL=text-embedding-004
-EMBEDDING_DIMENSION=768
-```
+Copy and edit environment variables (see `env.example`):
 
----
-
-## 🚀 How to Run
-
-### Interactive CLI Agent
-To start the AI Call Center in your terminal:
 ```bash
-python src/AI/call_center_agent.py
+copy env.example src\.env
 ```
-*Follow the on-screen prompts to "Press Enter" and start speaking.*
 
-### FastAPI Server
-To run the API server for voice services:
+Required environment variables (examples exist in `env.example`):
+
+- `GEMINI_API_KEY` — API key for Gemini LLMs
+- `QDRANT_HOST` / `QDRANT_PORT` — Vector DB connection
+- `VECTOR_COLLECTION_NAME` — Qdrant collection name
+- `EMBEDDING_MODEL` / `EMBEDDING_DIMENSION` — embedding settings
+
+See [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) for route and payload details.
+
+## Running Locally
+
+Run the FastAPI server (from `src/`):
+
 ```bash
 cd src
-uvicorn main:app --reload
+python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
-The server will be available at `http://127.0.0.1:8000`.
+
+Use the websocket endpoint for live audio sessions: check `src/routers/websocket_endpoint.py` for details.
+
+Generate audio assets (example):
+
+```bash
+python src/generate_audio_files.py
+```
+
+Run Qdrant (optional) using Docker Compose (project root):
+
+```bash
+docker-compose up --build
+```
+
+## Development Notes
+
+- Core AI modules live in `src/AI/`:
+    - `dialect_detector.py` — dialect detection utilities
+    - `gemini_live_manager.py` — handles calls to Gemini and live orchestration
+    - `session.py` — session/state management for conversations
+
+- RAG controllers in `src/RAGcontrollers/` handle embeddings, indexing, and queries against Qdrant.
+- FastAPI route handlers are in `src/routers/` (voice, websocket, and base routes).
+
+## Project Structure (short)
+
+- `src/` — application source
+    - `AI/` — AI modules and helpers
+    - `RAGcontrollers/` — Qdrant and embedding logic
+    - `routers/` — FastAPI endpoints (including websocket support)
+    - `helpers/` — config and utilities (`src/helpers/config.py`)
+    - `generate_audio_files.py` — utility for producing TTS audio assets
+    - `main.py` — FastAPI application entrypoint
+
+## Logs, Data and Assets
+
+- Generated audio files and examples are stored under `src/AI/audio_files/` and `src/assets/`.
+
+## Notes & Next Steps
+
+- Update `src/requirements.txt` if you add packages (a `pip freeze > src/requirements.txt` was used during development).
+- Verify API keys and Qdrant connectivity before starting the server.
+
+For full API details and integration examples, see [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md).
 
 ---
 
-## 📁 Project Structure
+If you'd like, I can also:
 
-- `src/AI/`: Core AI logic (Agent, Session management, Dialect detection).
-- `src/RAGcontrollers/`: Vector database (Qdrant) integration and embedding logic.
-- `src/routers/`: FastAPI routes for voice and system health.
-- `src/helpers/`: Configuration and utility functions.
-- `src/main.py`: Entry point for the FastAPI application.
+- add a small example script showing how to connect to the websocket endpoint,
+- update `env.example` with clearer variable descriptions, or
+- run the server and smoke-test the main endpoints locally.
 
----
-
-## 📝 License
-This project is for demonstration and development purposes. Please ensure compliance with Google Gemini and OpenAI Whisper licensing when using in production.
