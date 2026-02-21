@@ -41,6 +41,7 @@ dialect_detector = DialectDetector()  # keyword-only logging
 
 sessions: dict[str, CallSession] = {}
 live_sessions: dict[str, GeminiLiveManager] = {}
+pending_context: dict[str, str] = {}  # per-session RAG context ready for next turn
 
 
 # ── Pre-load welcome WAV ─────────────────────────────────────────────────────
@@ -82,7 +83,7 @@ load_welcome_audio()
 
 # ── Startup: play welcome on connect ─────────────────────────────────────────
 
-async def welcome_startup():
+async def welcome_startup(webrtc_id: str = "default_web_user"):
     """Async generator yielded by ReplyOnPause.startup_fn on each new WebRTC
     connection.  Sends a 100 ms silence to prime the browser AudioContext, then
     streams the pre-recorded welcome WAV — all before the user speaks a word.
@@ -102,6 +103,10 @@ async def welcome_startup():
         if len(chunk):
             yield (w_sr, chunk.reshape(1, -1))
     print("   ✓ Welcome complete\n")
+
+    # Pre-open Gemini Live session so it's ready before the user speaks
+    _pre_session = get_or_create_session(webrtc_id)
+    asyncio.ensure_future(get_or_create_live_session(webrtc_id, _pre_session))
 
 
 def get_or_create_session(session_id: str) -> CallSession:
@@ -130,22 +135,20 @@ async def get_or_create_live_session(session_id: str, session: CallSession) -> G
     profile, kb = [], []
 
     try:
-        profile = await asyncio.to_thread(vector_db.get_by_doc_type, "profile", 20)
+        profile, kb = await asyncio.gather(
+            asyncio.to_thread(vector_db.get_by_doc_type, "profile", 20),
+            asyncio.to_thread(vector_db.search, "خدمة عملاء دعم فني شحن رصيد باقات", 5),
+        )
         if profile:
             print(f"✅ Profile: Found {len(profile)} segment(s).")
         else:
             print("⚠️  Profile: No segments found (resume not tagged/indexed as doc_type=profile).")
-    except Exception as e:
-        print(f"⚠️  Profile fetch failed: {e}")
-
-    try:
-        kb = await asyncio.to_thread(vector_db.search, "خدمة عملاء دعم فني شحن رصيد باقات", 5)
         if kb:
             print(f"✅ KB: Found {len(kb)} segment(s).")
         else:
             print("⚠️  KB: No segments found.")
     except Exception as e:
-        print(f"⚠️  KB seed failed (Qdrant down?): {e}")
+        print(f"⚠️  RAG seed failed: {e}")
 
     rag_context = ""
     if profile:
@@ -168,10 +171,10 @@ async def get_or_create_live_session(session_id: str, session: CallSession) -> G
 
 # ── Main call handler ─────────────────────────────────────────────────────────
 
-async def process_call(audio_data: tuple[int, np.ndarray]):
+async def process_call(audio_data: tuple[int, np.ndarray], webrtc_id: str = "default_web_user"):
     """Called by fastrtc ReplyOnPause each time the user finishes speaking."""
 
-    SESSION_ID = "default_web_user"
+    SESSION_ID = webrtc_id
     session = get_or_create_session(SESSION_ID)
 
     try:
@@ -181,6 +184,15 @@ async def process_call(audio_data: tuple[int, np.ndarray]):
         live = await get_or_create_live_session(SESSION_ID, session)
         if live is None:
             return
+
+        # 1b) Inject any RAG context queued from the previous turn
+        if SESSION_ID in pending_context and live.is_connected():
+            try:
+                await live._session.send(input=pending_context.pop(SESSION_ID))
+                print(f"📚 Pre-turn RAG context injected")
+            except Exception as pre_err:
+                print(f"⚠️  Pre-turn RAG inject failed: {pre_err}")
+                pending_context.pop(SESSION_ID, None)
 
         # 2) Send audio → stream Gemini audio response
         print(f"🎙️  User spoke ({len(audio)/sr:.1f}s) — sending to Gemini Live...")
@@ -203,6 +215,17 @@ async def process_call(audio_data: tuple[int, np.ndarray]):
                     session.lock_dialect(dialect, conf)
                     print(f"🌍 Dialect (keyword): {dialect} ({conf:.0%})")
             print(f"📝 Input transcript: {in_text}")
+
+            # Dynamic RAG: search for context relevant to this utterance,
+            # store it as pending so it's injected BEFORE the next turn's audio.
+            try:
+                extra_context = await vector_db.search_async(in_text, limit=3)
+                if extra_context:
+                    pending_context[SESSION_ID] = "معلومة إضافية:\n" + "\n".join(extra_context)
+                    print(f"📚 Dynamic RAG: queued {len(extra_context)} segment(s) for next turn")
+            except Exception as rag_err:
+                print(f"⚠️  Dynamic RAG failed: {rag_err}")
+
         if out_text:
             print(f"📝 Output transcript: {out_text}")
 
@@ -218,7 +241,7 @@ async def process_call(audio_data: tuple[int, np.ndarray]):
 # ── FastRTC Stream ───────────────────────────────────────────────────────────
 
 stream = Stream(
-    handler=ReplyOnPause(process_call, startup_fn=welcome_startup),
+    handler=ReplyOnPause(process_call, startup_fn=welcome_startup, needs_args=True),
     modality="audio",
     mode="send-receive",
     additional_outputs_handler=lambda: {"text": "", "event": ""},

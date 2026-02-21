@@ -1,7 +1,7 @@
 import os
 import uuid
 from docling.document_converter import DocumentConverter
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+import semchunk
 from .DataController import DataController
 import traceback
 
@@ -13,12 +13,9 @@ class DataProcessing:
         # Docling for high-fidelity PDF/DOCX parsing
         self.converter = DocumentConverter()
         
-        # Recursive splitting optimized for Gemini/Qdrant
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=100,
-            separators=["\n\n", "\n", ".", " ", ""]
-        )
+        # semchunk for meaning-aware splitting (word-level token counter)
+        self._chunk_size = 800
+        self._token_counter = lambda t: len(t.split())
 
     def process_single_file(self, file_path: str, file_name: str):
         """
@@ -84,9 +81,13 @@ class DataProcessing:
             return []
         
         try:
-            # 2. Chunking Stage
-            print(f"🔄 Chunking {len(markdown_content)} chars...")
-            chunks = self.text_splitter.split_text(markdown_content)
+            # 2. Chunking Stage — semantic chunking via semchunk
+            print(f"🔄 Chunking {len(markdown_content)} chars (semchunk, size={self._chunk_size})...")
+            chunks = semchunk.chunk(
+                text=markdown_content,
+                chunk_size=self._chunk_size,
+                token_counter=self._token_counter,
+            )
             print(f"✅ Created {len(chunks)} chunks")
             
             if len(chunks) == 0:

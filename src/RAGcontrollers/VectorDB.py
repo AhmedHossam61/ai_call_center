@@ -1,4 +1,5 @@
 import google.genai as genai
+from cachetools import LRUCache
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from helpers.config import get_settings
@@ -36,8 +37,7 @@ class VectorDB:
         
         # 3. التأكد من وجود الـ Collection
         self._ensure_collection()
-        self._embed_cache: dict = {}   # md5(query) → embedding vector
-        self._CACHE_MAX = 500          # max cache entries before eviction
+        self._embed_cache: LRUCache = LRUCache(maxsize=500)
 
 
     def get_by_doc_type(self, doc_type: str, limit: int = 30) -> list[str]:
@@ -136,9 +136,6 @@ class VectorDB:
                 if is_query and len(texts) == 1 and embeddings:
                     key = self._cache_key(texts[0])
                     self._embed_cache[key] = embeddings[0]
-                    if len(self._embed_cache) > self._CACHE_MAX:
-                        oldest = next(iter(self._embed_cache))
-                        del self._embed_cache[oldest]
 
                 return embeddings
 
