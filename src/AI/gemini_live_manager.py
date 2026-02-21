@@ -163,7 +163,7 @@ class GeminiLiveManager:
                 self._model = m
                 print("✅ Gemini Live connected")
                 print(f"   Model  : {m}")
-                print(f"   Voice  : {DIALECT_VOICES.get(self.dialect, 'Kore')}")
+                print(f"   Voice  : {DIALECT_VOICES.get(self.dialect, 'Aoede')}")
                 return True
             except Exception as e:
                 print(f"⚠️  Gemini Live connect failed ({m}): {e}")
