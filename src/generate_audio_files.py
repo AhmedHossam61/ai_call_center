@@ -37,7 +37,7 @@ AUDIO_DIR = Path(__file__).parent / "audio_files"
 AUDIO_DIR.mkdir(exist_ok=True)
 
 # Gemini TTS configuration (must match tts_manager.py)
-GEMINI_MODEL = "gemini-2.5-flash-preview-tts"
+GEMINI_MODEL = "gemini-2.5-pro-preview-tts"
 GEMINI_VOICE = "Aoede"   # Change this if you changed it in tts_manager.py
 SAMPLE_RATE  = 24000
 
@@ -52,11 +52,11 @@ STYLE_PROMPTS = {
 
 # Welcome messages per dialect
 WELCOME_MESSAGES = {
-    "egyptian": "أهلاً وسهلاً، أنا أحمد من خدمة العملاء. ازيك؟ عايز أساعدك في إيه؟",
-    "gulf": "يا هلا وسهلا، أنا أحمد من خدمة العملاء. كيف حالك؟ شلون أقدر أخدمك؟",
-    "levantine": "أهلاً وسهلاً، أنا أحمد من خدمة العملاء. كيفك؟ شو ممكن ساعدك؟",
-    "moroccan": "مرحبا، أنا أحمد من خدمة العملاء. كيداير؟ شنو نقدر نعاونك؟",
-    "msa": "أهلاً وسهلاً، أنا أحمد من خدمة العملاء. كيف يمكنني مساعدتك اليوم؟",
+    "egyptian": "أهلاً وسهلاً، أنا أحمد من شركة telnova Solutions . ازيك؟ عايز أساعدك في إيه؟",
+    "gulf": "يا هلا وسهلا، أنا أحمد من telnova Solutions. كيف حالك؟ شلون أقدر أخدمك؟",
+    "levantine": "أهلاً وسهلاً، أنا أحمد من telnova Solutions. كيفك؟ شو ممكن ساعدك؟",
+    "moroccan": "مرحبا، أنا أحمد من telnova Solutions. كيداير؟ شنو نقدر نعاونك؟",
+    "msa": "أهلاً وسهلاً، أنا أحمد من telnova Solutions. كيف يمكنني مساعدتك اليوم؟",
 }
 
 # Hold music message (neutral MSA)

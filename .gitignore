@@ -5,7 +5,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-src/AI/audio_files/
+
 # Exclude your local PDF storage
 src/assets/
 .env
@@ -13,7 +13,7 @@ src/assets/
 qdrant_storage/
 qdrant_data/
 __pycache__/
-.venv/
+.venv
 # --- OS & IDE Files ---
 .vscode/
 .idea/
