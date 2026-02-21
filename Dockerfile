@@ -1,54 +1,48 @@
-# ── Stage 1: Builder ──────────────────────────────────────────
-FROM python:3.11-slim AS builder
+FROM python:3.10-slim
 
-ENV UV_SYSTEM_PYTHON=0 \
-    UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libc-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-# Create venv and activate it
-RUN uv venv /app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
-ENV VIRTUAL_ENV="/app/.venv"
-
-# Install setuptools INSIDE the venv first (fixes pkg_resources for webrtcvad)
-RUN uv pip install --python /app/.venv/bin/python setuptools
-
-# Install all dependencies into the venv
-COPY src/requirements.txt .
-RUN uv pip install --python /app/.venv/bin/python -r requirements.txt
-
-
-# ── Stage 2: Runtime ──────────────────────────────────────────
-FROM python:3.11-slim AS runtime
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/app/.venv/bin:$PATH" \
-    VIRTUAL_ENV="/app/.venv" \
-    SDL_AUDIODRIVER=dummy \
-    SDL_VIDEODRIVER=dummy
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 \
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libgl1 \
+    libglib2.0-0 \
+    curl \
     libportaudio2 \
     libasound2 \
-    libglib2.0-0 \
+    portaudio19-dev \
+    python3-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/.venv /app/.venv
-COPY src/ .
+RUN useradd -m appuser
 
-EXPOSE 8000 8001
+RUN mkdir -p /app/data/uploads /app/data/embeddings /home/appuser/.cache \
+    && chown -R appuser:appuser /app /home/appuser
 
-CMD ["/app/.venv/bin/python", "main.py"]
+COPY src/requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip "setuptools<81" wheel
+
+RUN pip install --no-cache-dir --no-build-isolation openai-whisper==20240930
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+COPY . .
+
+ENV UPLOAD_DIR=/app/data/uploads
+ENV STORAGE_DIR=/app/data/embeddings
+ENV HF_HOME=/home/appuser/.cache
+ENV PYTHONPATH=/app/src
+
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
+    CMD curl --fail http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

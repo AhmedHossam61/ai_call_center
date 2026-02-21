@@ -8,31 +8,8 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
-    networks:
-      - call_center_net
-
-  app:
-    image: call_center      # uses your locally built image, no rebuild
-    build: .
-    container_name: call_center_app
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-      - "8001:8001"
-    env_file:
-      - .env
-    environment:
-      - QDRANT_HOST=qdrant  # container name = hostname inside docker network
-    volumes:
-      - ./src/assets:/app/assets
-    depends_on:
-      - qdrant
-    networks:
-      - call_center_net
-
-networks:
-  call_center_net:
-    driver: bridge
 
 volumes:
   qdrant_storage:
+
+ 
