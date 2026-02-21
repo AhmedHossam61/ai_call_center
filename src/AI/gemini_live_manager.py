@@ -49,7 +49,7 @@ VERTEX_MODEL = "gemini-live-2.5-flash-native-audio"
 # ── Audio specs ─────────────────────────────────────────────────────────
 INPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_RATE = 24000
-OUTPUT_CHUNK_SIZE = 2400  # 100 ms @ 24 kHz
+OUTPUT_CHUNK_SIZE = 1200  # 50 ms @ 24 kHz
 
 
 DIALECT_VOICES = {
@@ -211,7 +211,7 @@ class GeminiLiveManager:
 
         # Because ReplyOnPause already segments utterances, disable Live VAD
         # and explicitly mark activity boundaries.
-        tail = np.zeros(int(INPUT_SAMPLE_RATE * 0.25), dtype=np.int16)  # 250ms
+        tail = np.zeros(int(INPUT_SAMPLE_RATE * 0.10), dtype=np.int16)  # 100 ms
         pcm16_with_tail = np.concatenate([pcm16, tail])
         pcm_bytes = pcm16_with_tail.tobytes()
 
@@ -285,5 +285,5 @@ class GeminiLiveManager:
             "speech_config": {
                 "voice_config": {"prebuilt_voice_config": {"voice_name": voice}}
             },
-            # ❌ remove transcription + realtime_input_config on 0.3.0
+            "output_audio_transcription": {},
         }

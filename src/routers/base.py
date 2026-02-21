@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+import asyncio
 from helpers.config import get_settings
 from RAGcontrollers.DataController import DataController
 from RAGcontrollers.DataProcessing import DataProcessing
@@ -23,7 +24,10 @@ def get_info():
 
 
 @base_router.post("/upload-and-index")
-async def upload_and_index_file(file: UploadFile = File(...)):
+async def upload_and_index_file(
+    file: UploadFile = File(...),
+    doc_type: str = Form(default=None),
+):
     """
     Unified Pipeline:
     Relational Storage (Postgres) -> AI Parsing (Docling) -> Vector Indexing (Qdrant)
@@ -43,7 +47,10 @@ async def upload_and_index_file(file: UploadFile = File(...)):
         stored_name = file_info.get("filename")  # comes from DataController
         file_path = file_info.get("path")
 
-        doc_type = "profile" if any(k in (original_name or "").lower() for k in ["cv", "resume", "سيرة"]) else "kb"
+        # Use caller-supplied doc_type or auto-detect from filename
+        _RESUME_KEYWORDS = ["cv", "resume", "سيرة", "سيره", "profile", "بيانات", "شخصية"]
+        if not doc_type:
+            doc_type = "profile" if any(k in (original_name or "").lower() for k in _RESUME_KEYWORDS) else "company_kb"
 
         for chunk in raw_chunks:
             chunk["metadata"]["doc_id"] = doc_id
@@ -59,6 +66,19 @@ async def upload_and_index_file(file: UploadFile = File(...)):
             chunk["metadata"]["db_id"] = db_id
 
         total_indexed = vector_db.insert_chunks(raw_chunks)
+
+        # Invalidate all open live sessions so they re-build with fresh RAG on next call
+        try:
+            from routers.websocket_endpoint import live_sessions
+            stale = list(live_sessions.keys())
+            for sid in stale:
+                mgr = live_sessions.pop(sid, None)
+                if mgr:
+                    asyncio.create_task(mgr.close())
+            if stale:
+                print(f"🔄 Invalidated {len(stale)} live session(s) — RAG will refresh on next call")
+        except Exception as inv_err:
+            print(f"⚠️  Session invalidation error: {inv_err}")
 
         return {
             "status": "Success",

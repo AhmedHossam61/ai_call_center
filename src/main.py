@@ -12,13 +12,40 @@ from routers import websocket_endpoint
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup/shutdown hooks.
+    """Startup/shutdown hooks."""
 
-    - Startup: nothing heavy (Gemini Live sessions open lazily on first call)
-    - Shutdown: close any open Gemini Live sessions
-    """
+    # 2.3 — Pre-warm embedding cache so the first RAG query hits cache
+    try:
+        from RAGcontrollers.VectorDB import vector_db as _vdb
+        asyncio.ensure_future(_vdb.prewarm_cache())
+    except Exception as e:
+        print(f"⚠️  Cache pre-warm failed: {e}")
+
+    # 4.2 — Background task: clean up disconnected sessions every 60 s
+    async def _cleanup_sessions():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                from routers.websocket_endpoint import live_sessions, sessions
+                for sid in list(live_sessions):
+                    mgr = live_sessions.get(sid)
+                    if mgr and not mgr.is_connected():
+                        try:
+                            await mgr.close()
+                        except Exception:
+                            pass
+                        live_sessions.pop(sid, None)
+                        sessions.pop(sid, None)
+                        print(f"🧹 Cleaned up disconnected session: {sid}")
+            except Exception as cleanup_err:
+                print(f"⚠️  Session cleanup error: {cleanup_err}")
+
+    _cleanup_task = asyncio.ensure_future(_cleanup_sessions())
     print("✅ Server ready — Gemini Live sessions will open on first call")
     yield
+
+    # Cancel cleanup task
+    _cleanup_task.cancel()
 
     # Close all Live sessions gracefully
     try:
